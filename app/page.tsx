@@ -1,69 +1,229 @@
-import Image from "next/image";
+"use client";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { profile } from "@/lib/profile";
+import { ChatMessage as Msg, StoredChat } from "@/lib/types";
+import { loadChats, saveChats, newChatId, titleFrom } from "@/lib/storage";
+import Sidebar from "@/components/Sidebar";
+import ChatMessage from "@/components/ChatMessage";
+import ChatInput from "@/components/ChatInput";
+import SuggestedQuestions from "@/components/SuggestedQuestions";
+import ProjectCard from "@/components/ProjectCard";
+import ResumeCard from "@/components/ResumeCard";
+import PanelDrawer from "@/components/PanelDrawer";
 
-export default function Home() {
+type PanelState =
+  | { kind: "none" }
+  | { kind: "project"; projectId: string }
+  | { kind: "resume" };
+
+export default function Page() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [chats, setChats] = useState<StoredChat[]>([]);
+  const [messages, setMessages] = useState<Msg[]>([]);
+  const [streaming, setStreaming] = useState(false);
+  const [panel, setPanel] = useState<PanelState>({ kind: "none" });
+  const [prefill, setPrefill] = useState<string>("");
+  const abortRef = useRef<AbortController | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    queueMicrotask(() => setChats(loadChats()));
+  }, []);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages, streaming]);
+
+  const persist = useCallback((msgs: Msg[]) => {
+    if (msgs.length === 0) return;
+    setChats((prev) => {
+      const id = prev[0]?.id ?? newChatId();
+      const existing = prev.find((c) => c.id === id);
+      const updated: StoredChat = {
+        id,
+        title: titleFrom(msgs),
+        createdAt: existing?.createdAt ?? Date.now(),
+        messages: msgs,
+      };
+      const next = [updated, ...prev.filter((c) => c.id !== id)].slice(0, 20);
+      saveChats(next);
+      return next;
+    });
+  }, []);
+
+  async function send(text: string) {
+    if (streaming) return;
+    const userMsg: Msg = { id: Math.random().toString(36).slice(2), role: "user", content: text };
+    const next = [...messages, userMsg];
+    setMessages(next);
+    setStreaming(true);
+    setPrefill("");
+
+    const assistantId = Math.random().toString(36).slice(2);
+    setMessages((m) => [...m, { id: assistantId, role: "assistant", content: "" }]);
+
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: next.map(({ role, content }) => ({ role, content })) }),
+        signal: ctrl.signal,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Request failed." }));
+        setMessages((m) =>
+          m.map((x) => (x.id === assistantId ? { ...x, content: `⚠ ${err.error}` } : x))
+        );
+        return;
+      }
+      if (!res.body) throw new Error("No stream");
+
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let acc = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        acc += dec.decode(value, { stream: true });
+        setMessages((m) =>
+          m.map((x) => (x.id === assistantId ? { ...x, content: acc } : x))
+        );
+      }
+      persist([...next, { id: assistantId, role: "assistant", content: acc }]);
+    } catch (e: unknown) {
+      if (!(e instanceof Error && e.name === "AbortError")) {
+        setMessages((m) =>
+          m.map((x) =>
+            x.id === assistantId
+              ? { ...x, content: "⚠ Connection error. Please try again." }
+              : x
+          )
+        );
+      }
+    } finally {
+      setStreaming(false);
+      abortRef.current = null;
+    }
+  }
+
+  function stop() {
+    abortRef.current?.abort();
+    setStreaming(false);
+  }
+
+  function newChat() {
+    setMessages([]);
+    setPrefill("");
+    setSidebarOpen(false);
+  }
+
+  function openChat(id: string) {
+    const c = chats.find((x) => x.id === id);
+    if (c) setMessages(c.messages);
+    setSidebarOpen(false);
+  }
+
+  const currentProject =
+    panel.kind === "project"
+      ? profile.projects.find((p) => p.id === panel.projectId)
+      : undefined;
+
+  const greeting = messages.length === 0;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div className="min-h-screen flex">
+      <Sidebar
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        chats={chats}
+        onNewChat={newChat}
+        onOpenChat={openChat}
+        onOpenProject={(id) => setPanel({ kind: "project", projectId: id })}
+        onOpenResume={() => setPanel({ kind: "resume" })}
+        onShortcut={(q) => {
+          setSidebarOpen(false);
+          send(q);
+        }}
+      />
+
+      <main className="flex-1 flex flex-col min-w-0">
+        <header className="flex items-center gap-3 px-4 py-3 border-b border-border sm:hidden">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="rounded-md border border-border px-3 py-1.5 text-sm"
+            aria-label="Open menu"
           >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            ☰
+          </button>
+          <div className="text-sm font-semibold truncate">{profile.name}</div>
+        </header>
+
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4">
+          {greeting ? (
+            <div className="min-h-[calc(100vh-80px)] flex flex-col items-center justify-center pb-32 sm:pb-40">
+              <h1 className="text-2xl sm:text-3xl font-semibold text-center">
+                Hi — ask me anything about {profile.name}
+              </h1>
+              <p className="mt-2 text-sm text-muted text-center max-w-md">
+                I&apos;m his AI assistant. I answer only from his profile.
+              </p>
+              <div className="mt-8 w-full max-w-2xl">
+                <ChatInput onSend={send} onStop={stop} streaming={streaming} centered />
+              </div>
+              <SuggestedQuestions questions={profile.suggestedQuestions} onPick={send} />
+            </div>
+          ) : (
+            <div className="max-w-2xl mx-auto py-6 space-y-6 pb-40">
+              {messages.map((m) => {
+                const projectMatch = m.content.match(/\[\[project:([^\]]+)\]\]/);
+                const hasResume = m.content.includes("[[resume]]");
+                const proj = projectMatch
+                  ? profile.projects.find((p) => p.id === projectMatch[1])
+                  : undefined;
+                return (
+                  <div key={m.id}>
+                    <ChatMessage role={m.role} content={m.content} streaming={streaming && m === messages[messages.length - 1]} />
+                    {m.role === "assistant" && proj && (
+                      <ProjectCard
+                        project={proj}
+                        onOpen={() => setPanel({ kind: "project", projectId: proj.id })}
+                        onAsk={() => send(`Tell me more about the ${proj.title} project.`)}
+                      />
+                    )}
+                    {m.role === "assistant" && hasResume && (
+                      <ResumeCard onOpen={() => setPanel({ kind: "resume" })} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
+
+        {!greeting && (
+          <ChatInput onSend={send} onStop={stop} streaming={streaming} prefill={prefill} />
+        )}
       </main>
+
+      {panel.kind === "project" && currentProject && (
+        <PanelDrawer
+          kind="project"
+          project={currentProject}
+          onClose={() => setPanel({ kind: "none" })}
+          onAsk={send}
+        />
+      )}
+      {panel.kind === "resume" && (
+        <PanelDrawer
+          kind="resume"
+          onClose={() => setPanel({ kind: "none" })}
+          onAsk={send}
+        />
+      )}
     </div>
   );
 }
