@@ -1,10 +1,30 @@
 // app/api/chat/route.ts
 import { NextRequest } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import {
+  GoogleGenAI,
+  ThinkingLevel,
+  type Content,
+  type GenerateContentResponse,
+} from "@google/genai";
 import { buildSystemPrompt } from "@/lib/systemPrompt";
 import { checkIp, checkDaily } from "@/lib/rateLimit";
 
 const MAX_LEN = 1500;
+const MODELS = [
+  "gemma-4-31b-it",
+  "gemma-4-26b-a4b-it",
+  "gemini-3.5-flash-lite",
+];
+const UNAVAILABLE_MESSAGE =
+  "The assistant is temporarily unavailable. Please try again in a little while.";
+
+function visibleText(response: GenerateContentResponse): string {
+  return (response.candidates ?? [])
+    .flatMap((candidate) => candidate.content?.parts ?? [])
+    .filter((part) => !part.thought)
+    .map((part) => part.text ?? "")
+    .join("");
+}
 
 export async function POST(req: NextRequest) {
   const key = process.env.GOOGLE_AI_API_KEY;
@@ -40,52 +60,84 @@ export async function POST(req: NextRequest) {
     return json({ error: `Message too long (max ${MAX_LEN} characters).` }, 400);
   }
 
-  // Build Gemini chat history. Gemini uses roles "user" and "model".
-  const history = messages.slice(0, -1).map((m) => ({
+  const contents: Content[] = messages.map((m) => ({
     role: m.role === "assistant" ? "model" : "user",
     parts: [{ text: m.content }],
   }));
-
-  const genAI = new GoogleGenerativeAI(key);
-  const model = genAI.getGenerativeModel({
-    model: "gemma-4-31b-it",
-    systemInstruction: buildSystemPrompt(),
-    generationConfig: {
-      temperature: 0.4,
-      maxOutputTokens: 600,
-    },
-  });
-
-  const chat = model.startChat({ history });
+  const ai = new GoogleGenAI({ apiKey: key });
 
   const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    async start(controller) {
-      try {
-        const result = await chat.sendMessageStream(last.content);
-        for await (const chunk of result.stream) {
-          const text = chunk.text();
-          if (text) controller.enqueue(encoder.encode(text));
-        }
-      } catch (err) {
-        console.error("Gemini stream error:", err);
-        controller.enqueue(
-          encoder.encode(
-            "\n\n[Sorry — something went wrong on my side. Please try again, or reach out via the contact links.]"
-          )
-        );
-      } finally {
-        controller.close();
-      }
-    },
-  });
+  for (const model of MODELS) {
+    try {
+      const responseStream = await ai.models.generateContentStream({
+        model,
+        contents,
+        config: {
+          systemInstruction: buildSystemPrompt(),
+          temperature: 0.4,
+          maxOutputTokens: 600,
+          ...(model.startsWith("gemma-4-")
+            ? {
+                thinkingConfig: {
+                  thinkingLevel: ThinkingLevel.MINIMAL,
+                  includeThoughts: false,
+                },
+              }
+            : {}),
+        },
+      });
+      const iterator = responseStream[Symbol.asyncIterator]();
+      let firstText = "";
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "no-store",
-    },
-  });
+      while (!firstText) {
+        const next = await iterator.next();
+        if (next.done) break;
+        firstText = visibleText(next.value);
+      }
+
+      if (!firstText) {
+        throw new Error("Model completed without visible response text.");
+      }
+
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode(firstText));
+          void streamRemaining(iterator, controller, model, encoder);
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "no-store, no-transform",
+        },
+      });
+    } catch (err) {
+      console.error(`Chat model ${model} failed before response text:`, err);
+    }
+  }
+
+  return json({ error: UNAVAILABLE_MESSAGE }, 503);
+}
+
+async function streamRemaining(
+  iterator: AsyncIterator<GenerateContentResponse>,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  model: string,
+  encoder: TextEncoder
+) {
+  try {
+    while (true) {
+      const next = await iterator.next();
+      if (next.done) break;
+      const text = visibleText(next.value);
+      if (text) controller.enqueue(encoder.encode(text));
+    }
+    controller.close();
+  } catch (err) {
+    console.error(`Chat model ${model} stream interrupted:`, err);
+    controller.error(new Error("The response stream was interrupted."));
+  }
 }
 
 function json(obj: unknown, status: number) {

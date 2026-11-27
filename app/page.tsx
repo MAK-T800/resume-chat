@@ -13,6 +13,19 @@ import DesktopShell, { type DesktopWindow } from "@/components/DesktopShell";
 import IlluminateLogo from "@/components/IlluminateLogo";
 import "./desktop.css";
 
+function withoutFailedTurns(messages: Msg[]): Msg[] {
+  const failedIndices = new Set<number>();
+  messages.forEach((message, index) => {
+    if (message.role === "assistant" && message.content.startsWith("⚠")) {
+      failedIndices.add(index);
+      if (index > 0 && messages[index - 1].role === "user") {
+        failedIndices.add(index - 1);
+      }
+    }
+  });
+  return messages.filter((_, index) => !failedIndices.has(index));
+}
+
 export default function Page() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chats, setChats] = useState<StoredChat[]>([]);
@@ -51,7 +64,7 @@ export default function Page() {
   async function send(text: string) {
     if (streaming) return;
     const userMsg: Msg = { id: Math.random().toString(36).slice(2), role: "user", content: text };
-    const next = [...messages, userMsg];
+    const next = [...withoutFailedTurns(messages), userMsg];
     setMessages(next);
     setStreaming(true);
     setPrefill("");
@@ -92,15 +105,13 @@ export default function Page() {
       }
       persist([...next, { id: assistantId, role: "assistant", content: acc }]);
     } catch (e: unknown) {
-      if (!(e instanceof Error && e.name === "AbortError")) {
-        setMessages((m) =>
-          m.map((x) =>
-            x.id === assistantId
-              ? { ...x, content: "⚠ Connection error. Please try again." }
-              : x
-          )
-        );
-      }
+      const message =
+        e instanceof Error && e.name === "AbortError"
+          ? "⚠ Response stopped before completion."
+          : "⚠ Connection error. Please try again.";
+      setMessages((m) =>
+        m.map((x) => (x.id === assistantId ? { ...x, content: message } : x))
+      );
     } finally {
       setStreaming(false);
       abortRef.current = null;
