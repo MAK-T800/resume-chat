@@ -9,19 +9,16 @@ import ChatInput from "@/components/ChatInput";
 import SuggestedQuestions from "@/components/SuggestedQuestions";
 import ProjectCard from "@/components/ProjectCard";
 import ResumeCard from "@/components/ResumeCard";
-import PanelDrawer from "@/components/PanelDrawer";
-
-type PanelState =
-  | { kind: "none" }
-  | { kind: "project"; projectId: string }
-  | { kind: "resume" };
+import DesktopShell, { type DesktopWindow } from "@/components/DesktopShell";
+import IlluminateLogo from "@/components/IlluminateLogo";
+import "./desktop.css";
 
 export default function Page() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chats, setChats] = useState<StoredChat[]>([]);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [streaming, setStreaming] = useState(false);
-  const [panel, setPanel] = useState<PanelState>({ kind: "none" });
+  const [activeWindow, setActiveWindow] = useState<DesktopWindow>(null);
   const [prefill, setPrefill] = useState<string>("");
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -119,111 +116,177 @@ export default function Page() {
     setMessages([]);
     setPrefill("");
     setSidebarOpen(false);
+    setActiveWindow({ kind: "chatbot" });
   }
 
   function openChat(id: string) {
     const c = chats.find((x) => x.id === id);
     if (c) setMessages(c.messages);
     setSidebarOpen(false);
+    setActiveWindow({ kind: "chatbot" });
   }
 
   const currentProject =
-    panel.kind === "project"
-      ? profile.projects.find((p) => p.id === panel.projectId)
+    activeWindow?.kind === "project"
+      ? profile.projects.find((p) => p.id === activeWindow.projectId)
       : undefined;
 
   const greeting = messages.length === 0;
 
   return (
-    <div className="min-h-screen flex">
-      <Sidebar
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        chats={chats}
-        onNewChat={newChat}
-        onOpenChat={openChat}
-        onOpenProject={(id) => setPanel({ kind: "project", projectId: id })}
-        onOpenResume={() => setPanel({ kind: "resume" })}
-        onShortcut={(q) => {
-          setSidebarOpen(false);
-          send(q);
-        }}
-      />
+    <DesktopShell
+      activeWindow={activeWindow}
+      onOpenChat={() => setActiveWindow({ kind: "chatbot" })}
+      onOpenProject={(projectId) => setActiveWindow({ kind: "project", projectId })}
+      onOpenResume={() => setActiveWindow({ kind: "resume" })}
+      onClose={() => setActiveWindow(null)}
+    >
+      {activeWindow?.kind === "chatbot" && (
+        <div className="chatLayout">
+          <Sidebar
+            open={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
+            chats={chats}
+            onNewChat={newChat}
+            onOpenChat={openChat}
+          />
 
-      <main className="flex-1 flex flex-col min-w-0">
-        <header className="flex items-center gap-3 px-4 py-3 border-b border-border sm:hidden">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="rounded-md border border-border px-3 py-1.5 text-sm"
-            aria-label="Open menu"
-          >
-            ☰
-          </button>
-          <div className="text-sm font-semibold truncate">{profile.name}</div>
-        </header>
+          <main className="chatMain">
+            <header className="chatMobileHeader">
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(true)}
+                aria-label="Open chat menu"
+              >
+                ☰
+              </button>
+              <span>{profile.name}</span>
+            </header>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4">
-          {greeting ? (
-            <div className="min-h-[calc(100vh-80px)] flex flex-col items-center justify-center pb-32 sm:pb-40">
-              <h1 className="text-2xl sm:text-3xl font-semibold text-center">
-                Hi — ask me anything about {profile.name}
-              </h1>
-              <p className="mt-2 text-sm text-muted text-center max-w-md">
-                I&apos;m his AI assistant. I answer only from his profile.
-              </p>
-              <div className="mt-8 w-full max-w-2xl">
-                <ChatInput onSend={send} onStop={stop} streaming={streaming} centered />
-              </div>
-              <SuggestedQuestions questions={profile.suggestedQuestions} onPick={send} />
+            <div ref={scrollRef} className="chatScroll">
+              {greeting ? (
+                <div className="greeting">
+                  <h1 className="greetingTitle">
+                    Hello — ask about {profile.name}
+                  </h1>
+                  <p className="greetingCopy">
+                    I&apos;m his AI assistant. I answer questions using the information in his profile.
+                  </p>
+                  <ChatInput onSend={send} onStop={stop} streaming={streaming} centered />
+                  <SuggestedQuestions questions={profile.suggestedQuestions} onPick={send} />
+                </div>
+              ) : (
+                <div className="messageList">
+                  {messages.map((message, index) => {
+                    const projectMatch = message.content.match(/\[\[project:([^\]]+)\]\]/);
+                    const hasResume = message.content.includes("[[resume]]");
+                    const project = projectMatch
+                      ? profile.projects.find((item) => item.id === projectMatch[1])
+                      : undefined;
+
+                    return (
+                      <div key={message.id}>
+                        <ChatMessage
+                          role={message.role}
+                          content={message.content}
+                          streaming={streaming && index === messages.length - 1}
+                        />
+                        {message.role === "assistant" && project && (
+                          <ProjectCard
+                            project={project}
+                            onOpen={() => setActiveWindow({ kind: "project", projectId: project.id })}
+                            onAsk={() => send(`Tell me more about the ${project.title} project.`)}
+                          />
+                        )}
+                        {message.role === "assistant" && hasResume && (
+                          <ResumeCard onOpen={() => setActiveWindow({ kind: "resume" })} />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="max-w-2xl mx-auto py-6 space-y-6 pb-40">
-              {messages.map((m) => {
-                const projectMatch = m.content.match(/\[\[project:([^\]]+)\]\]/);
-                const hasResume = m.content.includes("[[resume]]");
-                const proj = projectMatch
-                  ? profile.projects.find((p) => p.id === projectMatch[1])
-                  : undefined;
-                return (
-                  <div key={m.id}>
-                    <ChatMessage role={m.role} content={m.content} streaming={streaming && m === messages[messages.length - 1]} />
-                    {m.role === "assistant" && proj && (
-                      <ProjectCard
-                        project={proj}
-                        onOpen={() => setPanel({ kind: "project", projectId: proj.id })}
-                        onAsk={() => send(`Tell me more about the ${proj.title} project.`)}
-                      />
-                    )}
-                    {m.role === "assistant" && hasResume && (
-                      <ResumeCard onOpen={() => setPanel({ kind: "resume" })} />
-                    )}
-                  </div>
-                );
-              })}
+
+            {!greeting && (
+              <ChatInput
+                onSend={send}
+                onStop={stop}
+                streaming={streaming}
+                prefill={prefill}
+                embedded
+              />
+            )}
+          </main>
+        </div>
+      )}
+
+      {activeWindow?.kind === "project" && currentProject && (
+        <div className="projectContent">
+          <p className="projectEyebrow">Portfolio project</p>
+          <div className="projectIdentity">
+            {currentProject.id === "illuminate" && (
+              <span className="illuminateLogoFrame">
+                <IlluminateLogo className="illuminateGlyph" />
+              </span>
+            )}
+            <h1 className="projectTitle">{currentProject.title}</h1>
+          </div>
+          <p className="projectSummary">{currentProject.summary}</p>
+          {currentProject.tools.length > 0 && (
+            <div className="projectTools" aria-label="Technologies">
+              {currentProject.tools.map((tool) => (
+                <span key={tool} className="projectTool">{tool}</span>
+              ))}
             </div>
           )}
+          <div className="projectLinks">
+            {currentProject.link && (
+              <a className="projectLink" href={currentProject.link} target="_blank" rel="noopener noreferrer">
+                Open project ↗
+              </a>
+            )}
+            {currentProject.repo && (
+              <a className="projectLink" href={currentProject.repo} target="_blank" rel="noopener noreferrer">
+                View source ↗
+              </a>
+            )}
+          </div>
+          <button
+            type="button"
+            className="projectAsk"
+            disabled={streaming}
+            onClick={() => {
+              setActiveWindow({ kind: "chatbot" });
+              send(`Tell me about the ${currentProject.title} project.`);
+            }}
+          >
+            Ask the chatbot about this project
+          </button>
         </div>
-
-        {!greeting && (
-          <ChatInput onSend={send} onStop={stop} streaming={streaming} prefill={prefill} />
-        )}
-      </main>
-
-      {panel.kind === "project" && currentProject && (
-        <PanelDrawer
-          kind="project"
-          project={currentProject}
-          onClose={() => setPanel({ kind: "none" })}
-          onAsk={send}
-        />
       )}
-      {panel.kind === "resume" && (
-        <PanelDrawer
-          kind="resume"
-          onClose={() => setPanel({ kind: "none" })}
-          onAsk={send}
-        />
+
+      {activeWindow?.kind === "resume" && (
+        <div className="resumeContent">
+          <div className="resumeHeading">
+            <h1 className="resumeTitle">{profile.name} — Resume.pdf</h1>
+            <p className="resumeUpdated">Updated {profile.resume.updatedAt}</p>
+          </div>
+          <div className="resumeActions">
+            <a className="projectLink" href={profile.resume.path} download>
+              Download PDF
+            </a>
+            <a className="projectLink" href={profile.resume.path} target="_blank" rel="noopener noreferrer">
+              Open in new tab ↗
+            </a>
+          </div>
+          <iframe
+            className="pdfViewer"
+            src={profile.resume.path}
+            title={`${profile.name} resume PDF`}
+          />
+        </div>
       )}
-    </div>
+    </DesktopShell>
   );
 }

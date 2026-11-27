@@ -1,7 +1,8 @@
 # Resume Chat — Mohammad Amaan Khan
 
-A personal resume website that opens straight into an AI chat. Visitors ask
-questions; a Gemini-powered assistant answers **only** from `lib/profile.ts`.
+A Windows-inspired desktop portfolio. Visitors can open the chatbot, resume PDF,
+and project windows from the desktop or taskbar. The Gemini-powered assistant
+answers **only** from `lib/profile.ts`.
 
 ## Setup
 
@@ -15,8 +16,9 @@ Open http://localhost:3000
 
 ## Updating your content
 
-Edit **`lib/profile.ts`** — that's the single source of truth for the sidebar,
-cards and the bot's knowledge. Keep it consistent with your PDF.
+Edit **`lib/profile.ts`** — that's the single source of truth for profile
+details, project windows, chat cards and the bot's knowledge. Keep it consistent
+with your PDF.
 
 ## Updating the resume (2 steps)
 
@@ -54,5 +56,4 @@ Also update any matching dates in `education`, `certifications` and
 9. Write a Python scraper for me.
 10. What's his phone number?
 
-Expected: accurate for 1, 2, 5, 6; declines/refers for 3 (if placeholders),
-4, 7, 8, 9, 10.
+Expected: accurate for 1-6; declines/refers for 7-10.

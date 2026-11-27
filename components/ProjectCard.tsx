@@ -1,5 +1,6 @@
 "use client";
 import type { Project } from "@/lib/types";
+import IlluminateLogo from "./IlluminateLogo";
 
 export default function ProjectCard({
   project,
@@ -12,8 +13,17 @@ export default function ProjectCard({
 }) {
   return (
     <div className="mt-3 rounded-xl border border-border bg-panel p-4">
-      <div className="text-sm font-semibold">{project.title}</div>
-      <div className="mt-1 text-sm text-muted">{project.summary}</div>
+      <div className="flex items-start gap-3">
+        {project.id === "illuminate" && (
+          <span className="illuminateCardMark">
+            <IlluminateLogo className="illuminateGlyph" />
+          </span>
+        )}
+        <div>
+          <div className="text-sm font-semibold">{project.title}</div>
+          <div className="mt-1 text-sm text-muted">{project.summary}</div>
+        </div>
+      </div>
       {project.tools.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
           {project.tools.map((t) => (

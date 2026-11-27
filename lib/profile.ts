@@ -11,56 +11,60 @@ import type { Profile } from "./types";
 export const profile: Profile = {
   name: "Mohammad Amaan Khan",
   initials: "MAK",
-  headline: "Developer",
-  location: "To be added",
-  availability: "To be added",
+  headline: "Electronics & Computer Engineering Student | Full-Stack & AI/ML",
+  location: "",
+  availability: "Open to internship opportunities",
   summary:
-    "I'm an Electronics and Computer Engineering student at SRM Institute of Science and Technology, Kattankulathur, with strong coding skills and a keen interest in building practical solutions. My branch gives me a foundation in both hardware and software, and I enjoy turning ideas into working projects. I'm looking for internship opportunities where I can apply my skills, learn from real-world challenges and contribute to a team.",
-  expertise: ["Electronics", "Web Development", "AI Engineering", "Data Science"],
-  skills: ["Python", "Java", "C", "C++", "JavaScript", "HTML", "CSS", "CUDA"],
+    "I'm a third-year Electronics and Computer Engineering student at SRM Institute of Science and Technology, Kattankulathur. I have a CGPA of 8.37 and expect to graduate in 2028. My interests include full-stack web development, data structures, data science, AI/ML, and embedded systems. I'm looking for internship opportunities where I can apply my skills, learn from real-world challenges, and contribute to a team.",
+  expertise: ["Full-Stack Web Development", "AI/ML", "Data Science", "Embedded Systems"],
+  skills: [
+    "C",
+    "C++",
+    "Java",
+    "Python",
+    "JavaScript",
+    "HTML",
+    "CSS",
+    "MERN Stack",
+    "Data Structures",
+    "Data Science",
+    "AI/ML",
+    "Embedded Systems",
+  ],
   education: [
     {
       school: "SRM Institute of Science and Technology, Kattankulathur",
       program: "Electronics and Computer Engineering",
+      notes: "Third year, fifth semester; CGPA 8.37; expected graduation in 2028.",
     },
   ],
   certifications: [],
-  achievements: ["To be added"],
-  lookingFor: "To be added",
+  achievements: [],
+  lookingFor:
+    "Internship opportunities where I can apply my skills, learn from real-world challenges, and contribute to a team.",
   contact: [
     { label: "GitHub", url: "https://github.com/MAK-T800" },
     { label: "LinkedIn", url: "https://www.linkedin.com/in/m-a-k-t800/" },
   ],
-  // ---- PROJECTS: replace these placeholders with your real ones ----
-  // Newest first. Remove both placeholders when you have real projects.
   projects: [
-    // TODO: replace with a real project
     {
-      id: "placeholder-one",
-      title: "Project One (placeholder)",
-      summary: "Placeholder project — replace with a real project.",
-      tools: ["Python"],
-      link: "",
-      repo: "",
-    },
-    // TODO: replace with a real project
-    {
-      id: "placeholder-two",
-      title: "Project Two (placeholder)",
-      summary: "Placeholder project — replace with a real project.",
-      tools: ["JavaScript"],
-      link: "",
-      repo: "",
+      id: "illuminate",
+      title: "Illuminate",
+      summary:
+        "An AI-powered learning platform with a study helper, support for PDF and PowerPoint materials, cited sources, quiz generation, and a classroom leaderboard.",
+      tools: [],
+      link: "https://quiz-deck-eight.vercel.app/",
+      repo: "https://github.com/MAK-T800/QuizDeck",
     },
   ],
   resume: {
-    updatedAt: "2026-11-26", // ⭐ bump this when you replace public/resume.pdf
+    updatedAt: "2026-11-27",
     path: "/resume.pdf",
   },
   suggestedQuestions: [
     "What is Mohammad studying?",
     "What programming languages does he know?",
-    "What areas is he strongest in?",
-    "How can I contact him?",
+    "Tell me about the Illuminate project.",
+    "What is Mohammad's CGPA?",
   ],
 };

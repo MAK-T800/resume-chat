@@ -7,12 +7,14 @@ export default function ChatInput({
   streaming,
   centered,
   prefill,
+  embedded,
 }: {
   onSend: (text: string) => void;
   onStop: () => void;
   streaming: boolean;
   centered?: boolean;
   prefill?: string;
+  embedded?: boolean;
 }) {
   const [val, setVal] = useState(prefill ?? "");
 
@@ -33,7 +35,11 @@ export default function ChatInput({
     <div
       className={
         "w-full max-w-2xl mx-auto " +
-        (centered ? "" : "fixed left-0 right-0 bottom-0 px-4 pb-4 bg-gradient-to-t from-bg via-bg to-transparent pt-6")
+        (centered
+          ? ""
+          : embedded
+            ? "px-4 py-4 border-t border-border bg-panel"
+            : "fixed left-0 right-0 bottom-0 px-4 pb-4 bg-gradient-to-t from-bg via-bg to-transparent pt-6")
       }
     >
       <div className="relative rounded-2xl border border-border bg-panel shadow-sm">
